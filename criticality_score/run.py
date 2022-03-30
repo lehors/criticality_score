@@ -29,7 +29,7 @@ import github
 import gitlab
 import requests
 
-from .constants import *  # pylint: disable=wildcard-import
+from .defaults import *  # pylint: disable=wildcard-import
 
 logger = logging.getLogger()
 
@@ -431,12 +431,67 @@ def get_param_score(param, max_value, weight=1):
     return (math.log(1 + param) / math.log(1 + max(param, max_value))) * weight
 
 
-def get_repository_stats(repo, additional_params=None):
+def get_repository_stats(repo, override_params=None, additional_params=None):
     """Return repository stats, including criticality score."""
     # Validate and compute additional params first.
     if not repo.last_commit:
         logger.error(f'Repo is empty: {repo.url}')
         return None
+
+    for override_param in override_params:
+        temp = override_param.split(':',1)
+        param_name = temp[0]
+        try:
+            weight, threshold = [
+                int(i) for i in temp[1].split(':')
+            ]
+        except ValueError:
+            logger.error('Override parameter in bad format: ' + override_param)
+            sys.exit(1)
+        if param_name == 'created_since':
+            global CREATED_SINCE_WEIGHT, CREATED_SINCE_THRESHOLD
+            CREATED_SINCE_WEIGHT = weight
+            CREATED_SINCE_THRESHOLD = threshold
+        elif param_name == 'updated_since':
+            global UPDATED_SINCE_WEIGHT, UPDATED_SINCE_THRESHOLD
+            UPDATED_SINCE_WEIGHT = weight
+            UPDATED_SINCE_THRESHOLD = threshold
+        elif param_name == 'contributor_count':
+            global CONTRIBUTOR_COUNT_WEIGHT, CONTRIBUTOR_COUNT_THRESHOLD
+            CONTRIBUTOR_COUNT_WEIGHT = weight
+            CONTRIBUTOR_COUNT_THRESHOLD = threshold
+        elif param_name == 'org_count':
+            global ORG_COUNT_WEIGHT, ORG_COUNT_THRESHOLD
+            ORG_COUNT_WEIGHT = weight
+            ORG_COUNT_THRESHOLD = threshold
+        elif param_name == 'commit_frequency':
+            global COMMIT_FREQUENCY_WEIGHT, COMMIT_FREQUENCY_THRESHOLD
+            COMMIT_FREQUENCY_WEIGHT = weight
+            COMMIT_FREQUENCY_THRESHOLD = threshold
+        elif param_name == 'recent_releases_count':
+            global RECENT_RELEASES_WEIGHT, RECENT_RELEASES_THRESHOLD
+            RECENT_RELEASES_WEIGHT = weight
+            RECENT_RELEASES_THRESHOLD = threshold
+        elif param_name == 'updated_issues_count':
+            global UPDATED_ISSUES_WEIGHT, UPDATED_ISSUES_THRESHOLD
+            UPDATED_ISSUES_WEIGHT = weight
+            UPDATED_ISSUES_THRESHOLD = threshold
+        elif param_name == 'closed_issues_count':
+            global CLOSED_ISSUES_WEIGHT, CLOSED_ISSUES_THRESHOLD
+            CLOSED_ISSUES_WEIGHT = weight
+            CLOSED_ISSUES_THRESHOLD = threshold
+        elif param_name == 'comment_frequency':
+            global COMMENT_FREQUENCY_WEIGHT, COMMENT_FREQUENCY_THRESHOLD
+            COMMENT_FREQUENCY_WEIGHT = weight
+            COMMENT_FREQUENCY_THRESHOLD = threshold
+        elif param_name == 'dependents_count':
+            global DEPENDENTS_COUNT_WEIGHT, DEPENDENTS_COUNT_THRESHOLD
+            DEPENDENTS_COUNT_WEIGHT = weight
+            DEPENDENTS_COUNT_THRESHOLD = threshold
+        else:
+            raise Exception(
+                'Wrong format argument, unknown parameter: ' + param_name)
+
     if additional_params is None:
         additional_params = []
     additional_params_total_weight = 0
@@ -627,6 +682,12 @@ def main():
         default=[],
         help='Additional parameters in form <value>:<weight>:<max_threshold>',
         required=False)
+    parser.add_argument(
+        '--overrides',
+        nargs='+',
+        default=[],
+        help='Overriding parameters in form <name>:<weight>:<max_threshold>',
+        required=False)
 
     initialize_logging_handlers()
 
@@ -635,7 +696,7 @@ def main():
     if not repo:
         logger.error(f'Repo is not found: {args.repo}')
         return
-    output = get_repository_stats(repo, args.params)
+    output = get_repository_stats(repo, args.overrides, args.params)
     if not output:
         return
     if args.format == 'default':

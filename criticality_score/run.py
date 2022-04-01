@@ -431,67 +431,12 @@ def get_param_score(param, max_value, weight=1):
     return (math.log(1 + param) / math.log(1 + max(param, max_value))) * weight
 
 
-def get_repository_stats(repo, override_params=None, additional_params=None):
+def get_repository_stats(repo, additional_params=None):
     """Return repository stats, including criticality score."""
     # Validate and compute additional params first.
     if not repo.last_commit:
         logger.error(f'Repo is empty: {repo.url}')
         return None
-
-    for override_param in override_params:
-        temp = override_param.split(':',1)
-        param_name = temp[0]
-        try:
-            weight, threshold = [
-                int(i) for i in temp[1].split(':')
-            ]
-        except ValueError:
-            logger.error('Override parameter in bad format: ' + override_param)
-            sys.exit(1)
-        if param_name == 'created_since':
-            global CREATED_SINCE_WEIGHT, CREATED_SINCE_THRESHOLD
-            CREATED_SINCE_WEIGHT = weight
-            CREATED_SINCE_THRESHOLD = threshold
-        elif param_name == 'updated_since':
-            global UPDATED_SINCE_WEIGHT, UPDATED_SINCE_THRESHOLD
-            UPDATED_SINCE_WEIGHT = weight
-            UPDATED_SINCE_THRESHOLD = threshold
-        elif param_name == 'contributor_count':
-            global CONTRIBUTOR_COUNT_WEIGHT, CONTRIBUTOR_COUNT_THRESHOLD
-            CONTRIBUTOR_COUNT_WEIGHT = weight
-            CONTRIBUTOR_COUNT_THRESHOLD = threshold
-        elif param_name == 'org_count':
-            global ORG_COUNT_WEIGHT, ORG_COUNT_THRESHOLD
-            ORG_COUNT_WEIGHT = weight
-            ORG_COUNT_THRESHOLD = threshold
-        elif param_name == 'commit_frequency':
-            global COMMIT_FREQUENCY_WEIGHT, COMMIT_FREQUENCY_THRESHOLD
-            COMMIT_FREQUENCY_WEIGHT = weight
-            COMMIT_FREQUENCY_THRESHOLD = threshold
-        elif param_name == 'recent_releases_count':
-            global RECENT_RELEASES_WEIGHT, RECENT_RELEASES_THRESHOLD
-            RECENT_RELEASES_WEIGHT = weight
-            RECENT_RELEASES_THRESHOLD = threshold
-        elif param_name == 'updated_issues_count':
-            global UPDATED_ISSUES_WEIGHT, UPDATED_ISSUES_THRESHOLD
-            UPDATED_ISSUES_WEIGHT = weight
-            UPDATED_ISSUES_THRESHOLD = threshold
-        elif param_name == 'closed_issues_count':
-            global CLOSED_ISSUES_WEIGHT, CLOSED_ISSUES_THRESHOLD
-            CLOSED_ISSUES_WEIGHT = weight
-            CLOSED_ISSUES_THRESHOLD = threshold
-        elif param_name == 'comment_frequency':
-            global COMMENT_FREQUENCY_WEIGHT, COMMENT_FREQUENCY_THRESHOLD
-            COMMENT_FREQUENCY_WEIGHT = weight
-            COMMENT_FREQUENCY_THRESHOLD = threshold
-        elif param_name == 'dependents_count':
-            global DEPENDENTS_COUNT_WEIGHT, DEPENDENTS_COUNT_THRESHOLD
-            DEPENDENTS_COUNT_WEIGHT = weight
-            DEPENDENTS_COUNT_THRESHOLD = threshold
-        else:
-            raise Exception(
-                'Wrong format argument, unknown parameter: ' + param_name)
-
     if additional_params is None:
         additional_params = []
     additional_params_total_weight = 0
@@ -663,13 +608,93 @@ def initialize_logging_handlers():
     logging.getLogger('').addHandler(console)
 
 
+def override_params(override_params):
+    for override_param in override_params:
+        temp = override_param.split(':',1)
+        param_name = temp[0]
+        try:
+            weight, threshold = [
+                int(i) for i in temp[1].split(':')
+            ]
+        except ValueError:
+            logger.error('Override parameter in bad format: ' + override_param)
+            sys.exit(1)
+        if param_name == 'created_since':
+            global CREATED_SINCE_WEIGHT, CREATED_SINCE_THRESHOLD
+            CREATED_SINCE_WEIGHT = weight
+            CREATED_SINCE_THRESHOLD = threshold
+        elif param_name == 'updated_since':
+            global UPDATED_SINCE_WEIGHT, UPDATED_SINCE_THRESHOLD
+            UPDATED_SINCE_WEIGHT = weight
+            UPDATED_SINCE_THRESHOLD = threshold
+        elif param_name == 'contributor_count':
+            global CONTRIBUTOR_COUNT_WEIGHT, CONTRIBUTOR_COUNT_THRESHOLD
+            CONTRIBUTOR_COUNT_WEIGHT = weight
+            CONTRIBUTOR_COUNT_THRESHOLD = threshold
+        elif param_name == 'org_count':
+            global ORG_COUNT_WEIGHT, ORG_COUNT_THRESHOLD
+            ORG_COUNT_WEIGHT = weight
+            ORG_COUNT_THRESHOLD = threshold
+        elif param_name == 'commit_frequency':
+            global COMMIT_FREQUENCY_WEIGHT, COMMIT_FREQUENCY_THRESHOLD
+            COMMIT_FREQUENCY_WEIGHT = weight
+            COMMIT_FREQUENCY_THRESHOLD = threshold
+        elif param_name == 'recent_releases_count':
+            global RECENT_RELEASES_WEIGHT, RECENT_RELEASES_THRESHOLD
+            RECENT_RELEASES_WEIGHT = weight
+            RECENT_RELEASES_THRESHOLD = threshold
+        elif param_name == 'updated_issues_count':
+            global UPDATED_ISSUES_WEIGHT, UPDATED_ISSUES_THRESHOLD
+            UPDATED_ISSUES_WEIGHT = weight
+            UPDATED_ISSUES_THRESHOLD = threshold
+        elif param_name == 'closed_issues_count':
+            global CLOSED_ISSUES_WEIGHT, CLOSED_ISSUES_THRESHOLD
+            CLOSED_ISSUES_WEIGHT = weight
+            CLOSED_ISSUES_THRESHOLD = threshold
+        elif param_name == 'comment_frequency':
+            global COMMENT_FREQUENCY_WEIGHT, COMMENT_FREQUENCY_THRESHOLD
+            COMMENT_FREQUENCY_WEIGHT = weight
+            COMMENT_FREQUENCY_THRESHOLD = threshold
+        elif param_name == 'dependents_count':
+            global DEPENDENTS_COUNT_WEIGHT, DEPENDENTS_COUNT_THRESHOLD
+            DEPENDENTS_COUNT_WEIGHT = weight
+            DEPENDENTS_COUNT_THRESHOLD = threshold
+        else:
+            raise Exception(
+                'Wrong format argument, unknown parameter: ' + param_name)
+
+def process_repo(url, args, first=None):
+    repo = get_repository(url)
+    if not repo:
+        logger.error(f'Repo is not found: {args.repo}')
+        return
+    output = get_repository_stats(repo, args.params)
+    if not output:
+        return
+    if args.format == 'default':
+        for key, value in output.items():
+            logger.info(f'{key}: {value}')
+    elif args.format == 'json':
+        logger.info(json.dumps(output, indent=4))
+    elif args.format == 'csv':
+        csv_writer = csv.writer(sys.stdout)
+        if first:
+            csv_writer.writerow(output.keys())
+        csv_writer.writerow(output.values())
+    else:
+        raise Exception(
+            'Wrong format argument, use one of default, csv or json!')
+
 def main():
     parser = argparse.ArgumentParser(
-        description='Gives criticality score for an open source project')
-    parser.add_argument("--repo",
+        description='Gives criticality score for an open source project or a list of projects.')
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--repo",
                         type=str,
-                        required=True,
                         help="repository url")
+    group.add_argument("--repolist",
+                        type=str,
+                        help="listfile of repository urls")
     parser.add_argument(
         "--format",
         type=str,
@@ -692,26 +717,23 @@ def main():
     initialize_logging_handlers()
 
     args = parser.parse_args()
-    repo = get_repository(args.repo)
-    if not repo:
-        logger.error(f'Repo is not found: {args.repo}')
-        return
-    output = get_repository_stats(repo, args.overrides, args.params)
-    if not output:
-        return
-    if args.format == 'default':
-        for key, value in output.items():
-            logger.info(f'{key}: {value}')
-    elif args.format == 'json':
-        logger.info(json.dumps(output, indent=4))
-    elif args.format == 'csv':
-        csv_writer = csv.writer(sys.stdout)
-        csv_writer.writerow(output.keys())
-        csv_writer.writerow(output.values())
-    else:
-        raise Exception(
-            'Wrong format argument, use one of default, csv or json!')
+    if args.overrides:
+        override_params(args.overrides)
 
+    if args.repo:
+        process_repo(args.repo, args)
+    else:
+        with open(args.repolist, 'r') as rl:
+            first=True
+            for repo in rl:
+                repo_url = repo.strip()
+                try:
+                    process_repo(repo_url, args, first)
+                    first=False
+                except Exception as exp:
+                    logger.exception(
+                        f'Exception occurred when reading repo: {repo_url}\n{exp}')
 
 if __name__ == "__main__":
     main()
+
